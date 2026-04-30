@@ -5,9 +5,11 @@ const path = require("path");
 const { URL } = require("url");
 
 const app = express();
+
+app.set("trust proxy", true);
+
 const PORT = process.env.PORT || 3001;
 
-// Stream padrão: pode trocar no .env/plataforma usando DEFAULT_STREAM_URL
 const DEFAULT_STREAM_URL =
   process.env.DEFAULT_STREAM_URL ||
   "http://p2mult.xyz/live/27654857/79845566/12666.m3u8";
@@ -26,8 +28,11 @@ function isProbablyPlaylist(targetUrl, contentType) {
 
 function proxifyUrl(rawUrl, baseUrl, req) {
   const absolute = new URL(rawUrl, baseUrl).href;
-  const origin = `${req.protocol}://${req.get("host")}`;
-  return `${origin}/proxy?url=${encodeURIComponent(absolute)}`;
+
+  const host = req.get("host");
+  const protocol = host.includes("railway.app") ? "https" : req.protocol;
+
+  return `${protocol}://${host}/proxy?url=${encodeURIComponent(absolute)}`;
 }
 
 function rewritePlaylist(body, baseUrl, req) {
@@ -38,12 +43,10 @@ function rewritePlaylist(body, baseUrl, req) {
 
       if (!trimmed) return line;
 
-      // Linhas normais de segmento/playlist
       if (!trimmed.startsWith("#")) {
         return proxifyUrl(trimmed, baseUrl, req);
       }
 
-      // Reescreve URI="..." em tags como EXT-X-KEY e EXT-X-MAP
       return line.replace(/URI="([^"]+)"/g, (_match, uri) => {
         return `URI="${proxifyUrl(uri, baseUrl, req)}"`;
       });
@@ -68,6 +71,7 @@ app.get("/proxy", async (req, res) => {
   }
 
   let parsed;
+
   try {
     parsed = new URL(target);
   } catch {
@@ -104,7 +108,12 @@ app.get("/proxy", async (req, res) => {
     if (isProbablyPlaylist(target, contentType)) {
       const playlist = upstream.data.toString("utf8");
       const rewritten = rewritePlaylist(playlist, finalUrl, req);
-      res.setHeader("Content-Type", "application/vnd.apple.mpegurl; charset=utf-8");
+
+      res.setHeader(
+        "Content-Type",
+        "application/vnd.apple.mpegurl; charset=utf-8"
+      );
+
       return res.send(rewritten);
     }
 
@@ -113,10 +122,11 @@ app.get("/proxy", async (req, res) => {
   } catch (error) {
     const status = error.response?.status || 500;
     const msg = error.response?.statusText || error.message;
+
     return res.status(status).send(`Proxy error: ${msg}`);
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`HLS proxy rodando em http://localhost:${PORT}`);
+  console.log(`HLS proxy rodando na porta ${PORT}`);
 });
