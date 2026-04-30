@@ -105,18 +105,18 @@ app.get("/proxy", async (req, res) => {
     res.setHeader("Access-Control-Allow-Headers", "*");
     res.setHeader("Cache-Control", "public, max-age=120");
 
-    if (isProbablyPlaylist(target, contentType)) {
-      const playlist = upstream.data.toString("utf8");
-      const rewritten = rewritePlaylist(playlist, finalUrl, req);
+if (isProbablyPlaylist(target, contentType)) {
+  const playlist = upstream.data.toString("utf8");
+  const rewritten = rewritePlaylist(playlist, finalUrl, req);
 
-      res.setHeader(
-        "Content-Type",
-        "application/vnd.apple.mpegurl; charset=utf-8"
-      );
+  res.setHeader("Cache-Control", "public, max-age=2");
+  res.setHeader(
+    "Content-Type",
+    "application/vnd.apple.mpegurl; charset=utf-8"
+  );
 
-      return res.send(rewritten);
-    }
-
+  return res.send(rewritten);
+}
     res.setHeader("Content-Type", contentType || "application/octet-stream");
     return res.send(upstream.data);
   } catch (error) {
