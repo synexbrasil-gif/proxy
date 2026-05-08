@@ -130,5 +130,3 @@ app.get("/proxy", async (req, res) => {
 app.listen(PORT, () => {
   console.log(`HLS proxy rodando na porta ${PORT}`);
 });
-
-arrume e me envie pronto
