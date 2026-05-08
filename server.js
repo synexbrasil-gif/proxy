@@ -148,5 +148,5 @@ server.keepAliveTimeout = 65000;
 server.headersTimeout = 66000;
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`HLS proxy rodando na porta ${PORT}`);
+  console.log(`NOVO PROXY ONLINE - PORTA ${PORT}`);
 });
