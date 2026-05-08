@@ -2,7 +2,6 @@ const express = require("express");
 const axios = require("axios");
 const cors = require("cors");
 const path = require("path");
-const http = require("http");
 const { URL } = require("url");
 
 const app = express();
@@ -18,25 +17,7 @@ const DEFAULT_STREAM_URL =
 app.use(cors({ origin: "*" }));
 app.use(express.static(path.join(__dirname, "public")));
 
-app.use((req, res, next) => {
-  const start = Date.now();
-
-  console.log(
-    `[${new Date().toISOString()}] Novo player iniciado no proxy | ${req.method} ${req.originalUrl} | IP: ${req.ip}`
-  );
-
-  res.on("finish", () => {
-    const ms = Date.now() - start;
-
-    console.log(
-      `[${new Date().toISOString()}] Requisição finalizada | ${req.method} ${req.originalUrl} | Status: ${res.statusCode} | ${ms}ms`
-    );
-  });
-
-  next();
-});
-
-function isProbablyPlaylist(targetUrl, contentType = "") {
+function isProbablyPlaylist(targetUrl, contentType) {
   return (
     targetUrl.includes(".m3u8") ||
     contentType.includes("mpegurl") ||
@@ -47,12 +28,9 @@ function isProbablyPlaylist(targetUrl, contentType = "") {
 
 function proxifyUrl(rawUrl, baseUrl, req) {
   const absolute = new URL(rawUrl, baseUrl).href;
-  const host = req.get("host");
 
-  const protocol =
-    req.headers["x-forwarded-proto"] ||
-    req.protocol ||
-    "https";
+  const host = req.get("host");
+  const protocol = host.includes("railway.app") ? "https" : req.protocol;
 
   return `${protocol}://${host}/proxy?url=${encodeURIComponent(absolute)}`;
 }
@@ -76,38 +54,19 @@ function rewritePlaylist(body, baseUrl, req) {
     .join("\n");
 }
 
-app.get("/", (_req, res) => {
-  res.send("HLS proxy online");
-});
-
 app.get("/health", (_req, res) => {
-  res.json({
-    ok: true,
-    status: "online",
-    uptime: process.uptime(),
-    timestamp: new Date().toISOString(),
-  });
+  res.json({ ok: true });
 });
 
 app.get("/stream", (req, res) => {
   const target = req.query.url || DEFAULT_STREAM_URL;
-
-  console.log(
-    `[${new Date().toISOString()}] Stream iniciado | URL: ${target}`
-  );
-
   res.redirect(`/proxy?url=${encodeURIComponent(target)}`);
 });
 
 app.get("/proxy", async (req, res) => {
-  req.setTimeout(0);
-  res.setTimeout(0);
-
   const target = req.query.url;
 
   if (!target) {
-    console.log("URL ausente");
-
     return res.status(400).send("Missing url parameter");
   }
 
@@ -116,26 +75,18 @@ app.get("/proxy", async (req, res) => {
   try {
     parsed = new URL(target);
   } catch {
-    console.log("URL inválida");
-
     return res.status(400).send("Invalid url parameter");
   }
 
   if (!["http:", "https:"].includes(parsed.protocol)) {
-    console.log("Protocolo inválido");
-
     return res.status(400).send("Only http/https URLs are allowed");
   }
 
   try {
-    console.log(
-      `[${new Date().toISOString()}] Proxyando conteúdo | ${target}`
-    );
-
     const upstream = await axios.get(target, {
       responseType: "arraybuffer",
       maxRedirects: 8,
-      timeout: 30000,
+      timeout: 20000,
       validateStatus: (status) => status >= 200 && status < 400,
       headers: {
         "User-Agent":
@@ -150,69 +101,34 @@ app.get("/proxy", async (req, res) => {
     const finalUrl = upstream.request?.res?.responseUrl || target;
     const contentType = upstream.headers["content-type"] || "";
 
-    console.log(
-      `[${new Date().toISOString()}] Conteúdo recebido | Type: ${contentType}`
-    );
-
     res.setHeader("Access-Control-Allow-Origin", "*");
     res.setHeader("Access-Control-Allow-Headers", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
     res.setHeader("Cache-Control", "no-store");
 
     if (isProbablyPlaylist(target, contentType)) {
-      console.log(
-        `[${new Date().toISOString()}] Playlist HLS detectada`
-      );
-
       const playlist = upstream.data.toString("utf8");
-
-      const rewritten = rewritePlaylist(
-        playlist,
-        finalUrl,
-        req
-      );
+      const rewritten = rewritePlaylist(playlist, finalUrl, req);
 
       res.setHeader(
         "Content-Type",
         "application/vnd.apple.mpegurl; charset=utf-8"
       );
 
-      return res.status(200).send(rewritten);
+      return res.send(rewritten);
     }
 
-    console.log(
-      `[${new Date().toISOString()}] Arquivo enviado ao player`
-    );
-
-    res.setHeader(
-      "Content-Type",
-      contentType || "application/octet-stream"
-    );
-
-    return res.status(200).send(Buffer.from(upstream.data));
+    res.setHeader("Content-Type", contentType || "application/octet-stream");
+    return res.send(upstream.data);
   } catch (error) {
-    console.error(
-      `[${new Date().toISOString()}] Proxy error:`,
-      error.message
-    );
-
-    const status = error.response?.status || 502;
-
-    const msg =
-      error.response?.statusText || error.message;
+    const status = error.response?.status || 500;
+    const msg = error.response?.statusText || error.message;
 
     return res.status(status).send(`Proxy error: ${msg}`);
   }
 });
 
-const server = http.createServer(app);
-
-server.timeout = 0;
-server.keepAliveTimeout = 65000;
-server.headersTimeout = 66000;
-
-server.listen(PORT, "0.0.0.0", () => {
-  console.log(
-    `[${new Date().toISOString()}] Proxy rodando na porta: ${PORT}`
-  );
+app.listen(PORT, () => {
+  console.log(`HLS proxy rodando na porta ${PORT}`);
 });
+
+arrume e me envie pronto
